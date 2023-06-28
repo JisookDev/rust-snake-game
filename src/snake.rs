@@ -18,4 +18,37 @@ impl Snake {
 
     Self {body, direction, digesting: false}
   }
+
+  pub fn get_head_point(&self) -> Point {
+    self.body.first().unwrap().clone() //body 벡터 값 중 첫번째 아이템만 가져와서 복사.
+  }
+
+  pub fn get_body_point(&self) -> Vec<Point> {
+    self.body.clone()
+  }
+
+  pub fn get_direction(&self) -> Direction {
+    self.direction.clone()
+  }
+
+  pub fn contains_point(&self, point: &Point) -> bool {
+    self.body.contains(point)
+  }
+
+  pub fn slither(&mut self) {
+    self.body.insert(0, self.body.first().unwrap().transform(self.direction, 1));
+    if !self.digesting {
+      self.body.remove(self.body.len() - 1);
+    } else {
+      self.digesting = false;
+    }
+  }
+
+  pub fn set_direction (&mut self, direction: Direction) {
+    self.direction = direction;
+  }
+
+  pub fn grow(&mut self) {
+    self.digesting = true;
+  }
 }
