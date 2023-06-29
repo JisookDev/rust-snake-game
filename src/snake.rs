@@ -3,7 +3,7 @@ use crate::point::Point;
 
 #[derive(Debug)]
 pub struct Snake {
-    body: Vec<point>,
+    body: Vec<Point>,
     direction: Direction,
     digesting: bool,
 }
@@ -23,7 +23,7 @@ impl Snake {
         self.body.first().unwrap().clone() //body 벡터 값 중 첫번째 아이템만 가져와서 복사.
     }
 
-    pub fn get_body_point(&self) -> Vec<Point> {
+    pub fn get_body_points(&self) -> Vec<Point> {
         self.body.clone()
     }
 

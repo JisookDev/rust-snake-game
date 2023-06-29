@@ -4,7 +4,11 @@ use crate::point::Point;
 use crate::snake::Snake;
 use std::io::Stdout;
 use std::time::{Duration, Instant};
-use crossterm::terminal::size;
+use crossterm::{ExecutableCommand};
+use crossterm::cursor::{Show, MoveTo, Hide};
+use crossterm::event::{poll, read, Event, KeyCode, KeyModifiers, KeyEvent};
+use crossterm::terminal::{Clear, ClearType, size, SetSize, enable_raw_mode, disable_raw_mode};
+use crossterm::style::{SetForegroundColor, Print, ResetColor, Color};
 use rand::Rng;
 
 const MAX_INTERVAL: u16 = 700;
@@ -36,7 +40,7 @@ impl Game {
             snake: Snake::new(
                 Point::new(width / 2, height / 2),
                 3,
-                match rand::thread_rng().gen_range(0, 4) {
+                match rand::thread_rng().gen_range(0..4) {
                     0 => Direction::Up,
                     1 => Direction::Right,
                     2 => Direction::Down,
@@ -104,10 +108,30 @@ impl Game {
         println!("Game Over! Your score is {}", self.score);
     }
 
+    fn has_collided_with_wall(&self) -> bool {
+        let head_point = self.snake.get_head_point();
+
+        match self.snake.get_direction() {
+            Direction::Up => head_point.y == 0,
+            Direction::Right => head_point.x == self.width - 1,
+            Direction::Down => head_point.y == self.height - 1,
+            Direction::Left => head_point.x == 0,
+        }
+    }
+
+    fn has_bitten_itself(&self) -> bool {
+        let next_head_point = self.snake.get_head_point().transform(self.snake.get_direction(), 1);
+        let mut next_body_points = self.snake.get_body_points().clone();
+        next_body_points.remove(next_body_points.len() - 1);
+        next_body_points.remove(0);
+
+        next_body_points.contains(&next_head_point)
+    }
+
     fn place_food(&mut self) {
         loop {
-            let random_x = rand::thread_rng().gen_range(0, self.width);
-            let random_y = rand::thread_rng().gen_range(0, self.height);
+            let random_x = rand::thread_rng().gen_range(0..self.width);
+            let random_y = rand::thread_rng().gen_range(0..self.height);
             //random x,y로 point 생성
             let point = Point::new(random_x, random_y);
             if !self.snake.contains_point(&point) {
@@ -133,7 +157,7 @@ impl Game {
     }
 
     fn draw_borders(&mut self) {
-        self.stdout.execute(SetForegroungColor(Color::DarkGrey)).unwrap();
+        self.stdout.execute(SetForegroundColor(Color::DarkGrey)).unwrap();
         //x축 # 그리기
         for x in 0..self.height + 2 {
             self.stdout
@@ -173,26 +197,26 @@ impl Game {
             }
         }
     }
-    
+
     fn draw_food(&mut self) {
-        self.stdout.execute(SetForegroungColor(Color::White)).unwrap();
+        self.stdout.execute(SetForegroundColor(Color::White)).unwrap();
 
         for food in self.food.iter() {
             self.stdout
                 .execute(MoveTo(food.x + 1, food.y + 1)).unwrap()
-                .execute(Print("🦴")).unwrap();
+                .execute(Print("🍏")).unwrap();
         }
     }
 
     fn draw_snake(&mut self) {
-        let foregroundColor = SetForegroungColor(match self.speed % 3 {
+        let foregroundColor = SetForegroundColor(match self.speed % 3 {
             0 => Color::Green,
             1 => Color::Cyan,
             _ => Color::Yellow
         });
         self.stdout.execute(foregroundColor).unwrap();
 
-        let body_points = self.snake.get_body_point();
+        let body_points = self.snake.get_body_points();
         for (i, body) in body_points.iter().enumerate() {
             let previous = if i == 0 {None} else { body_points.get(i-1) };
             let next = body_points.get(i + 1);
@@ -234,5 +258,52 @@ impl Game {
                 .execute(MoveTo(body.x + 1, body.y + 1)).unwrap()
                 .execute(Print(symbol)).unwrap();
         }
+    }
+
+    fn calculate_interval(&self) -> Duration {
+        let speed = MAX_SPEED - self.speed;
+        Duration::from_millis(
+            (MIN_INTERVAL + ((MAX_INTERVAL - MIN_INTERVAL) / MAX_SPEED * speed)) as u64
+        )
+    }
+
+    fn get_command(&self, wait_for: Duration) -> Option<Command> {
+        let key_event = self.wait_for_key_event(wait_for)?;
+
+        match key_event.code {
+            KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => Some(Command::Quit),
+            KeyCode::Char('c') | KeyCode::Char('C') =>
+                if key_event.modifiers == KeyModifiers::CONTROL {
+                    Some(Command::Quit)
+                } else {
+                    None
+                }
+            KeyCode::Up => Some(Command::Turn(Direction::Up)),
+            KeyCode::Right => Some(Command::Turn(Direction::Right)),
+            KeyCode::Down => Some(Command::Turn(Direction::Down)),
+            KeyCode::Left => Some(Command::Turn(Direction::Left)),
+            _ => None
+        }
+    }
+
+    fn wait_for_key_event(&self, wait_for: Duration) -> Option<KeyEvent> {
+        if poll(wait_for).ok()? {
+            let event = read().ok()?;
+            if let Event::Key(key_event) = event {
+                return Some(key_event);
+            }
+        }
+
+        None
+    }
+
+    fn restore_ui(&mut self) {
+        let (cols, rows) = self.original_terminal_size;
+        self.stdout
+            .execute(SetSize(cols, rows)).unwrap()
+            .execute(Clear(ClearType::All)).unwrap()
+            .execute(Show).unwrap()
+            .execute(ResetColor).unwrap();
+        disable_raw_mode().unwrap();
     }
 }
